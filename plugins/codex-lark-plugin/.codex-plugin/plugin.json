@@ -1,0 +1,37 @@
+{
+  "name": "codex-lark-plugin",
+  "version": "0.1.0",
+  "description": "Feishu-oriented Codex plugin for team knowledge retrieval and document-based task management.",
+  "author": {
+    "name": "chenkai",
+    "email": "",
+    "url": ""
+  },
+  "license": "MIT",
+  "keywords": [
+    "feishu",
+    "codex",
+    "knowledge-base",
+    "task-management"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Codex Lark Plugin",
+    "shortDescription": "Query project docs and manage task docs",
+    "longDescription": "Connect Codex with Feishu-style team knowledge and document-based task workflows so developers can retrieve project docs and maintain task state through structured documents.",
+    "developerName": "chenkai",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Find the latest product and project docs for a team",
+      "List the most relevant docs for a project or keyword",
+      "Create or update a task document for the team"
+    ],
+    "brandColor": "#0F766E",
+    "screenshots": []
+  }
+}

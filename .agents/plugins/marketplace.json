@@ -1,0 +1,20 @@
+{
+  "name": "codex-lark-marketplace",
+  "interface": {
+    "displayName": "Codex Lark Marketplace"
+  },
+  "plugins": [
+    {
+      "name": "codex-lark-plugin",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex-lark-plugin"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
