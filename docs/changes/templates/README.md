@@ -11,3 +11,5 @@
 
 - [codex-feishu-knowledge-plugin](./codex-feishu-knowledge-plugin/spec.md)
   - Codex 飞书知识插件第一版实现规格，当前已落地为本地 `stdio` MCP 知识检索闭环。
+- [codex-feishu-api-integration](./codex-feishu-api-integration/spec.md)
+  - 在现有样本文档闭环基础上，补充真实飞书 API 接入的提案文档，当前处于 `spec-propose` 阶段。
