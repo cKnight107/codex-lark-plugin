@@ -5,6 +5,8 @@
   "scripts": {
     "build": "node plugins/codex-lark-plugin/scripts/validate-runtime.js",
     "sync:sample": "node plugins/codex-lark-plugin/scripts/sync-index.js",
+    "sync:feishu": "node plugins/codex-lark-plugin/scripts/sync-feishu.js",
+    "test:feishu-smoke": "node plugins/codex-lark-plugin/scripts/feishu-smoke.js",
     "test": "node --test"
   }
 }

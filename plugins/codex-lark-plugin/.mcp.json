@@ -6,8 +6,12 @@
         "./scripts/server.js"
       ],
       "env": {
+        "LARK_DOCS_SOURCE": "sample",
         "LARK_DOCS_FIXTURE": "./data/feishu-docs.sample.json",
-        "LARK_INDEX_PATH": "./data/index.json"
+        "LARK_INDEX_PATH": "./data/index.json",
+        "LARK_FEISHU_APP_ID": "replace-with-app-id",
+        "LARK_FEISHU_APP_SECRET": "replace-with-app-secret",
+        "LARK_FEISHU_SYNC_ROOTS": "[{\"type\":\"folder\",\"token\":\"replace-with-root-token\"}]"
       }
     }
   }
