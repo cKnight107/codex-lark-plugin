@@ -1,0 +1,111 @@
+# log
+
+- 2026-04-22：用户在现有“样本文档知识检索插件”基础上提出“如何对接飞书”的后续需求；经分析，该需求超出 `docs/changes/templates/codex-feishu-knowledge-plugin/` 的既有范围，不适合走 `spec-fix`。
+- 2026-04-22：读取当前实现后确认，真实飞书接入的最小影响面集中在数据源层、索引刷新逻辑、脚本命令、配置和测试，而 MCP tools 主合同应尽量保持不变。
+- 2026-04-22：新建提案目录 `docs/changes/templates/codex-feishu-api-integration/`，并在分支 `feature/codex-feishu-api-integration` 进入 `spec-propose` 阶段。
+- 2026-04-22：当前仍待用户确认 3 个关键取舍：同步范围、认证模式、真实飞书模式下的 diff 保留策略；确认前不进入 Apply。
+- 2026-04-22：用户确认首版真实飞书同步范围选择 A，仅同步配置的文件夹和 wiki 根入口；提案同步收敛，不做全租户扫描。
+- 2026-04-22：用户确认首版认证模式选择 A，仅支持自建应用 + `tenant_access_token`；当前仍保留 diff 策略待确认。
+- 2026-04-22：用户确认真实飞书模式下的 diff 策略选择 A，采用本地同步快照生成 `revisions[]`；当前架构级待确认项已全部关闭，等待用户显式确认是否进入 Apply。
+- 2026-04-22：用户以 `spec-apply` 明确要求开始实施，当前需求目录正式进入 Apply；`spec.md` 文档状态同步切换为 `spec-apply`。
+- 2026-04-22：完成任务“设计真实飞书数据源接口与环境变量契约”：
+  - 新增 `plugins/codex-lark-plugin/scripts/lib/data-source.js`，集中解析 `LARK_DOCS_SOURCE`，并定义 `sample` / `feishu` 两种模式。
+  - 约定 `feishu` 模式必填 `LARK_FEISHU_APP_ID`、`LARK_FEISHU_APP_SECRET`、`LARK_FEISHU_SYNC_ROOTS`；其中 `LARK_FEISHU_SYNC_ROOTS` 采用非空 JSON 数组，元素格式为 `{ "type": "folder" | "wiki", "token": "<root token>" }`。
+  - 明确 fail-fast 规则：模式非法、必填 env 缺失、同步根入口结构错误时直接报错；真实飞书 client 未实现前，不允许静默回退到 sample 模式。
+- 2026-04-22：为配置契约补充自动化测试 `plugins/codex-lark-plugin/scripts/__tests__/data-source.test.js`，覆盖默认 sample、feishu 必填校验、同步根入口解析、非法模式和未实现提示。
+- 2026-04-22：验证结果：
+  - `npm test` 通过，10/10 用例通过，覆盖新增配置测试与既有 sample 检索回归。
+  - `npm run build` 通过，`validate-runtime.js` 仍能注册 5 个 MCP tools，样本索引文档数保持 5。
+- 2026-04-22：用户确认“面向别人使用时，应以本地 MCP 配置作为首要填写入口”，因此提案同步收敛为：
+  - 用户文档默认指导在本地插件 MCP 配置的 `env` 中填写飞书参数。
+  - 仓库中的 `.mcp.json` 只保留模板或示例，不提交真实 secret。
+  - shell 环境变量保留为开发调试兜底入口。
+- 2026-04-22：完成任务“实现真实飞书 token 获取与请求封装”：
+  - 新增 `plugins/codex-lark-plugin/scripts/lib/feishu-client.js`，提供 `getTenantAccessToken()`、`request()` 与 `FeishuApiError`。
+  - token 获取使用官方接口 `POST /open-apis/auth/v3/tenant_access_token/internal`，请求体为 `app_id` / `app_secret`。
+  - Bearer 请求封装统一处理 HTTP 非 2xx、飞书业务码非 0、网络异常、非法 JSON 与缺字段响应。
+  - 增加进程内最小 token 缓存，并预留过期前缓冲时间刷新。
+  - 相关实现依据官方文档：
+    - https://open.feishu.cn/document/server-docs/authentication-management/access-token/tenant_access_token_internal
+    - https://open.feishu.cn/document/server-docs/api-call-guide/terminology
+- 2026-04-22：为 token 层补充自动化测试 `plugins/codex-lark-plugin/scripts/__tests__/feishu-client.test.js`，覆盖：
+  - token 成功获取与缓存命中
+  - Bearer header 自动注入与请求体透传
+  - HTTP 失败报错
+  - 飞书业务错误码报错
+  - token 响应缺字段 fail-fast
+- 2026-04-22：本轮验证结果：
+  - `npm test` 通过，15/15 用例通过。
+  - `npm run build` 通过，sample 模式运行时校验未回归，5 个 MCP tools 仍完整注册。
+- 2026-04-22：完成任务“实现文件夹 / wiki 入口遍历与 docx 归一化”：
+  - 新增 `plugins/codex-lark-plugin/scripts/lib/feishu-docs-source.js`，实现两类 root 的受限遍历：
+    - folder root：调用 `GET /open-apis/drive/v1/files`，对非递归文件夹清单自行做 BFS，下探子文件夹
+    - wiki root：调用 `GET /open-apis/wiki/v2/spaces/get_node` 解析 root，再调用 `GET /open-apis/wiki/v2/spaces/:space_id/nodes` 分页遍历子节点
+  - `docx` 正文通过 `GET /open-apis/docx/v1/documents/:document_id/raw_content` 获取，第一版只同步纯文本正文。
+  - 归一化输出字段收敛为当前索引兼容结构：`doc_id`、`title`、`author`、`updated_at`、`url`、`source_path`、`body`、`revisions`。
+  - folder 场景支持把指向 `docx` 的快捷方式解析到真实 `target_token`；wiki 场景仅对 `obj_type=docx` 的节点取正文，但仍会继续遍历 `has_child=true` 的非 `docx` 节点。
+  - 首版真实同步为每篇文档初始化单条 revision，时间戳使用当前正文快照的更新时间，后续再由索引快照层扩展多版本 diff。
+- 2026-04-22：`plugins/codex-lark-plugin/scripts/lib/data-source.js` 已接入真实飞书遍历结果；在 `feishu` 模式下，当前可以产出 `buildIndex()` 兼容的数据结构，项目分类词与文档类型词仍沿用本地 sample fixture 中的 catalog 配置。
+- 2026-04-22：本轮实现依据的官方文档：
+  - 获取文件夹中的文件清单：https://open.feishu.cn/document/server-docs/docs/drive-v1/folder/list
+  - 获取知识空间节点信息：https://open.feishu.cn/document/server-docs/docs/wiki-v2/space-node/get_node
+  - 获取知识空间子节点列表：https://open.feishu.cn/document/server-docs/docs/wiki-v2/space-node/list
+  - 获取文档纯文本内容：https://open.feishu.cn/document/server-docs/docs/docs/docx-v1/document/raw_content
+- 2026-04-22：为遍历与归一化补充自动化测试 `plugins/codex-lark-plugin/scripts/__tests__/feishu-docs-source.test.js`，覆盖：
+  - folder 根入口递归遍历子文件夹
+  - folder 快捷方式指向 `docx` 的归一化
+  - wiki root 解析、子节点分页遍历与递归下探
+  - `loadDocumentSource()` 在 `feishu` 模式下输出兼容 `buildIndex()` 的数据结构
+- 2026-04-22：本轮验证结果：
+  - `npm test` 通过，17/17 用例通过。
+  - `npm run build` 通过，sample 模式运行时校验未回归，5 个 MCP tools 仍完整注册。
+- 2026-04-22：完成任务“改造 `index-store.js` 支持可切换数据源”：
+  - `plugins/codex-lark-plugin/scripts/lib/index-store.js` 新增 source metadata 构造逻辑，索引文件现在会落盘：
+    - `source_type`
+    - `source_signature`
+    - `source`
+  - `source_signature` 采用配置签名而非远端内容签名：
+    - `sample` 模式包含 fixture 路径
+    - `feishu` 模式包含 `appId` 与 `syncRoots`
+    - 明确不将 `appSecret` 写入索引文件
+  - `ensureIndex()` 刷新策略调整为：
+    - `forceSync=true` 时强制重建
+    - source signature 变化时重建
+    - `sample` 模式在 signature 一致时继续沿用 fixture mtime 判定
+    - `feishu` 模式在 signature 一致时直接复用已有索引，不再默认每次都先打远端 API
+  - `buildIndex()` 保持原有查询字段结构不变，仅增加 source metadata 字段，确保现有 MCP tools 可直接消费。
+- 2026-04-22：为 `index-store` 补充自动化测试 `plugins/codex-lark-plugin/scripts/__tests__/index-store.test.js`，覆盖：
+  - sample 模式在 fixture 未变化时复用已有索引
+  - feishu 模式在 source signature 未变化时命中缓存、不重复请求远端
+  - feishu 模式在 `syncRoots` 变化时触发刷新
+- 2026-04-22：本轮验证结果：
+  - `npm test` 通过，20/20 用例通过。
+  - `npm run build` 通过，sample 模式运行时校验未回归，5 个 MCP tools 仍完整注册。
+- 2026-04-22：完成任务“保留或降级 `compare_doc_changes` 的真实飞书模式行为”：
+  - `plugins/codex-lark-plugin/scripts/lib/index-store.js` 在 `feishu` 模式且 source signature 不变时，会把上一次已落盘索引中的同文档快照 revision 合并到本次同步结果中。
+  - 当正文未变化时，不追加重复 revision；当正文变化时，追加新的本地快照。
+  - `plugins/codex-lark-plugin/scripts/lib/knowledge-tools.js` 对真实飞书模式新增明确降级提示：若文档仅有 1 个本地同步快照，则提示至少完成两次同步后再比较差异。
+- 2026-04-22：为真实飞书 diff 行为补充自动化测试：
+  - 首次同步时 `compare_doc_changes` 返回明确降级提示
+  - 对同一篇文档做两次同步且正文变化后，`revisions[]` 可累积到 2 条并支持 diff
+- 2026-04-22：完成任务“扩展命令、README 与 `.mcp.json` 说明”：
+  - `package.json` 新增：
+    - `npm run sync:feishu`
+    - `npm run test:feishu-smoke`
+  - 新增脚本：
+    - `plugins/codex-lark-plugin/scripts/sync-feishu.js`
+    - `plugins/codex-lark-plugin/scripts/feishu-smoke.js`
+  - `plugins/codex-lark-plugin/scripts/sync-index.js` 现在会输出 `sourceType` 与 `sourceSignature`。
+  - `plugins/codex-lark-plugin/.mcp.json` 增加 sample / feishu 双模式 env 模板字段，但飞书凭证仍为占位符模板值。
+  - `plugins/codex-lark-plugin/README.md` 已补充 sample/feishu 双模式运行方式、本地 MCP 配置建议、真实飞书 smoke test 命令，以及真实飞书 diff 依赖二次同步的说明。
+- 2026-04-22：完成任务“补充自动化测试与 smoke test 方案”：
+  - `plugins/codex-lark-plugin/scripts/test-feishu-smoke.js` 已更名为 `plugins/codex-lark-plugin/scripts/feishu-smoke.js`，避免被 `node --test` 误当作自动化测试文件。
+  - smoke test 会校验：
+    - 已进入 `feishu` 模式
+    - 至少同步到 1 篇文档
+    - 首篇文档具备关键字段
+    - `get_doc_summary` 可命中首篇文档
+  - `plugins/codex-lark-plugin/scripts/validate-runtime.js` 现在会校验 `.mcp.json` 模板中包含完整的 sample / feishu env 字段。
+- 2026-04-22：最终整体验证结果：
+  - `npm test` 通过，22/22 用例通过。
+  - `npm run build` 通过，build 输出显示 sample 默认源仍可正常生成索引，`.mcp.json` 模板字段校验通过。

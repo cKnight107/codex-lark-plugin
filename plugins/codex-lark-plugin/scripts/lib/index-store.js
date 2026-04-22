@@ -1,16 +1,139 @@
 import fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
-import { loadFixture } from "./fixture-client.js";
+import { loadDocumentSource, resolveDataSourceConfig } from "./data-source.js";
 import { inferDocType, inferProject } from "./inference.js";
 import { defaultIndexPath, resolvePluginPath } from "./path-utils.js";
 import { createSummary } from "./text-utils.js";
 
-export function buildIndex(fixture) {
-  const documents = (fixture.documents ?? [])
+function buildSourceState(config) {
+  if (config.sourceType === "sample") {
+    return {
+      sourceType: "sample",
+      fixturePath: resolvePluginPath(config.fixturePath, undefined)
+    };
+  }
+
+  return {
+    sourceType: "feishu",
+    appId: config.appId,
+    syncRoots: [...(config.syncRoots ?? [])].map((entry) => ({
+      type: entry.type,
+      token: entry.token
+    }))
+  };
+}
+
+function createSourceSignature(sourceState) {
+  return createHash("sha256")
+    .update(JSON.stringify(sourceState))
+    .digest("hex");
+}
+
+function buildSourceMetadata(config) {
+  const state = buildSourceState(config);
+
+  return {
+    state,
+    signature: createSourceSignature(state)
+  };
+}
+
+function isSameSource(index, sourceMetadata) {
+  return (
+    index?.source_signature === sourceMetadata.signature &&
+    index?.source_type === sourceMetadata.state.sourceType
+  );
+}
+
+function normalizeRevision(revision) {
+  if (!revision?.timestamp || typeof revision.content !== "string") {
+    return null;
+  }
+
+  return {
+    timestamp: revision.timestamp,
+    content: revision.content
+  };
+}
+
+function mergeDocumentRevisions(document, previousDocument) {
+  const previousRevisions = (previousDocument?.revisions ?? [])
+    .map(normalizeRevision)
+    .filter(Boolean)
+    .sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+
+  const currentSnapshot = {
+    timestamp: document.updated_at,
+    content: document.body ?? ""
+  };
+
+  if (previousRevisions.length === 0) {
+    return [currentSnapshot];
+  }
+
+  const merged = [...previousRevisions];
+  const latest = merged.at(-1);
+
+  if (latest.content === currentSnapshot.content) {
+    if (latest.timestamp !== currentSnapshot.timestamp) {
+      merged[merged.length - 1] = currentSnapshot;
+    }
+    return merged;
+  }
+
+  const hasExactSnapshot = merged.some(
+    (revision) =>
+      revision.timestamp === currentSnapshot.timestamp &&
+      revision.content === currentSnapshot.content
+  );
+
+  if (!hasExactSnapshot) {
+    merged.push(currentSnapshot);
+  }
+
+  return merged;
+}
+
+function mergeFeishuSnapshotRevisions(sourceData, previousIndex, sourceMetadata) {
+  if (
+    sourceMetadata.state.sourceType !== "feishu" ||
+    !previousIndex ||
+    !isSameSource(previousIndex, sourceMetadata)
+  ) {
+    return sourceData;
+  }
+
+  const previousDocumentsById = new Map(
+    (previousIndex.documents ?? []).map((document) => [document.doc_id, document])
+  );
+
+  return {
+    ...sourceData,
+    documents: (sourceData.documents ?? []).map((document) => ({
+      ...document,
+      revisions: mergeDocumentRevisions(
+        document,
+        previousDocumentsById.get(document.doc_id)
+      )
+    }))
+  };
+}
+
+export function buildIndex(sourceData, options = {}) {
+  const sourceMetadata =
+    options.sourceMetadata ??
+    buildSourceMetadata({
+      sourceType: sourceData.sourceType ?? "sample",
+      fixturePath: sourceData.fixturePath,
+      appId: sourceData.appId,
+      syncRoots: sourceData.syncRoots
+    });
+  const documents = (sourceData.documents ?? [])
     .map((document) => {
-      const project = inferProject(document, fixture.projects ?? []);
-      const docType = inferDocType(document, fixture.docTypes ?? []);
+      const project = inferProject(document, sourceData.projects ?? []);
+      const docType = inferDocType(document, sourceData.docTypes ?? []);
       const confidence = Number(
         ((project.confidence + docType.confidence) / 2).toFixed(2)
       );
@@ -35,9 +158,12 @@ export function buildIndex(fixture) {
 
   return {
     generated_at: new Date().toISOString(),
-    source_fixture: fixture.fixturePath,
-    projects: fixture.projects ?? [],
-    docTypes: fixture.docTypes ?? [],
+    source_fixture: sourceMetadata.state.fixturePath ?? null,
+    source_type: sourceMetadata.state.sourceType,
+    source_signature: sourceMetadata.signature,
+    source: sourceMetadata.state,
+    projects: sourceData.projects ?? [],
+    docTypes: sourceData.docTypes ?? [],
     documents
   };
 }
@@ -67,27 +193,60 @@ export async function ensureIndex(options = {}) {
     options.indexPath ?? process.env.LARK_INDEX_PATH,
     defaultIndexPath
   );
-  const fixture = await loadFixture(options);
+  const config = resolveDataSourceConfig(options);
+  const sourceMetadata = buildSourceMetadata(config);
   let shouldRefresh = options.forceSync ?? false;
+  let existingIndex = null;
 
   if (!shouldRefresh) {
     try {
-      const [indexStat, fixtureStat] = await Promise.all([
-        fs.stat(resolvedPath),
-        fs.stat(fixture.fixturePath)
+      const [{ index }, indexStat] = await Promise.all([
+        readIndex({ indexPath: resolvedPath }),
+        fs.stat(resolvedPath)
       ]);
-      shouldRefresh = fixtureStat.mtimeMs > indexStat.mtimeMs;
+      existingIndex = index;
+
+      if (!isSameSource(index, sourceMetadata)) {
+        shouldRefresh = true;
+      } else if (sourceMetadata.state.sourceType === "sample") {
+        const sourceStat = await fs.stat(sourceMetadata.state.fixturePath);
+        shouldRefresh = sourceStat.mtimeMs > indexStat.mtimeMs;
+      } else {
+        shouldRefresh = false;
+      }
     } catch {
       shouldRefresh = true;
     }
   }
 
   if (shouldRefresh) {
-    const index = buildIndex(fixture);
+    if (!existingIndex) {
+      try {
+        const { index } = await readIndex({ indexPath: resolvedPath });
+        existingIndex = index;
+      } catch {
+        existingIndex = null;
+      }
+    }
+
+    const sourceData = await loadDocumentSource(options);
+    const mergedSourceData = mergeFeishuSnapshotRevisions(
+      sourceData,
+      existingIndex,
+      sourceMetadata
+    );
+    const index = buildIndex(mergedSourceData, { sourceMetadata });
     await persistIndex(resolvedPath, index);
     return {
       indexPath: resolvedPath,
       index
+    };
+  }
+
+  if (existingIndex) {
+    return {
+      indexPath: resolvedPath,
+      index: existingIndex
     };
   }
 

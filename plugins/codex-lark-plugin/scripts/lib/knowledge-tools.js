@@ -218,12 +218,22 @@ export async function executeTool(name, args = {}, options = {}) {
     case "compare_doc_changes": {
       const document = requireDocument(documents, args);
       const latest = pickRevision(document.revisions, args.to);
-      const baseline = pickRevision(
-        document.revisions,
-        args.from ?? document.revisions.at(-2)?.timestamp
-      );
+      const baselineCursor =
+        args.from !== undefined
+          ? args.from
+          : document.revisions.length >= 2
+            ? document.revisions.at(-2)?.timestamp
+            : null;
+      const baseline = baselineCursor
+        ? pickRevision(document.revisions, baselineCursor)
+        : null;
 
       if (!latest || !baseline) {
+        if (index.source_type === "feishu") {
+          throw new Error(
+            "真实飞书模式下该文档当前只有 1 个本地同步快照，至少完成两次同步后才能比较差异。"
+          );
+        }
         throw new Error("文档缺少足够的 revision 数据，无法比较。");
       }
 

@@ -1,4 +1,8 @@
+import process from "node:process";
+
 import { ensureIndex } from "./lib/index-store.js";
+
+process.env.LARK_DOCS_SOURCE ??= "feishu";
 
 const { indexPath, index } = await ensureIndex({ forceSync: true });
 
