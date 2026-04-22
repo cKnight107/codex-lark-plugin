@@ -1,6 +1,11 @@
 {
-  "generated_at": "2026-04-22T13:10:14.665Z",
-  "source_fixture": "codex-lark-plugin/plugins/codex-lark-plugin/data/feishu-docs.sample.json",
+  "generated_at": "2026-04-22T14:06:46.563Z",
+  "source_fixture": null,
+  "source_type": "sample",
+  "source_signature": "5877ccb136e8fb06c809146b34d8099975d0afb5ba37f8b4f9348f593294bcd2",
+  "source": {
+    "sourceType": "sample"
+  },
   "projects": [
     {
       "project_id": "phoenix-app",
