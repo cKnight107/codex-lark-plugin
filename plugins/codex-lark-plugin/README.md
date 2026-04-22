@@ -8,13 +8,14 @@
 
 - 团队知识库文档检索
 - 项目文档摘要
-- 文档化任务创建与更新
+- 最近更新查询与文档差异比较
 
 ## 目录说明
 
 - `.codex-plugin/plugin.json`：插件 manifest
-- `skills/`：面向 Codex 的技能定义
-- `scripts/`：同步飞书文档、写入任务文档等脚本
+- `skills/`：面向 Codex 的知识检索技能定义
+- `scripts/`：样本文档同步、索引构建与 MCP server 脚本
+- `data/`：用于本地验证的飞书样本文档 fixture
 - `assets/`：图标、截图等静态资源
 - `.mcp.json`：MCP 服务配置
 
@@ -31,3 +32,10 @@ codex marketplace add https://github.com/<your-github-username>/codex-lark-plugi
 ```
 
 来接入整个 marketplace。
+
+## 本地运行
+
+```bash
+npm run sync:sample
+node plugins/codex-lark-plugin/scripts/server.js
+```

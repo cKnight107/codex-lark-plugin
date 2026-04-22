@@ -1,0 +1,10 @@
+{
+  "name": "codex-lark-plugin-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node plugins/codex-lark-plugin/scripts/validate-runtime.js",
+    "sync:sample": "node plugins/codex-lark-plugin/scripts/sync-index.js",
+    "test": "node --test"
+  }
+}

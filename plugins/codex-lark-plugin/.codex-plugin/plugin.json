@@ -1,7 +1,7 @@
 {
   "name": "codex-lark-plugin",
-  "version": "0.1.0",
-  "description": "Feishu-oriented Codex plugin for team knowledge retrieval and document-based task management.",
+  "version": "0.2.0",
+  "description": "Feishu-oriented Codex plugin for team knowledge retrieval, summaries, recent updates, and document diffs.",
   "author": {
     "name": "chenkai",
     "email": "",
@@ -12,24 +12,24 @@
     "feishu",
     "codex",
     "knowledge-base",
-    "task-management"
+    "document-search",
+    "document-summary"
   ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Codex Lark Plugin",
-    "shortDescription": "Query project docs and manage task docs",
-    "longDescription": "Connect Codex with Feishu-style team knowledge and document-based task workflows so developers can retrieve project docs and maintain task state through structured documents.",
+    "shortDescription": "Query project docs, summaries, recent updates, and document diffs",
+    "longDescription": "Connect Codex with Feishu-style team knowledge so developers can retrieve project docs, inspect summaries, browse recent updates, and compare document revisions through structured MCP tools.",
     "developerName": "chenkai",
     "category": "Productivity",
     "capabilities": [
-      "Interactive",
-      "Write"
+      "Interactive"
     ],
     "defaultPrompt": [
       "Find the latest product and project docs for a team",
       "List the most relevant docs for a project or keyword",
-      "Create or update a task document for the team"
+      "Compare how a team document changed between two updates"
     ],
     "brandColor": "#0F766E",
     "screenshots": []

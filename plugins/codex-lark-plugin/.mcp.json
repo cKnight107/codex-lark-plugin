@@ -1,3 +1,14 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "codex-feishu-knowledge": {
+      "command": "node",
+      "args": [
+        "./scripts/server.js"
+      ],
+      "env": {
+        "LARK_DOCS_FIXTURE": "./data/feishu-docs.sample.json",
+        "LARK_INDEX_PATH": "./data/index.json"
+      }
+    }
+  }
 }

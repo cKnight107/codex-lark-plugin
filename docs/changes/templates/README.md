@@ -6,3 +6,8 @@
 - 规格模板
 - 任务拆解模板
 - 记录模板
+
+## 当前提案
+
+- [codex-feishu-knowledge-plugin](./codex-feishu-knowledge-plugin/spec.md)
+  - Codex 飞书知识插件第一版实现规格，当前已落地为本地 `stdio` MCP 知识检索闭环。

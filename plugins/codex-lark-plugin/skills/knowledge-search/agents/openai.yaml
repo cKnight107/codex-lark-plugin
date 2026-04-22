@@ -1,0 +1,4 @@
+interface:
+  display_name: "Knowledge Search"
+  short_description: "Search Feishu project docs, summaries, recency, and diffs"
+  default_prompt: "Use $knowledge-search to find relevant Feishu project docs, summarize one document, or compare recent changes."

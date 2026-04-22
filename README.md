@@ -4,10 +4,10 @@
 
 - `codex-lark-plugin`
 
-第一版目标聚焦两类能力：
+第一版目标聚焦知识检索闭环：
 
 - 团队知识库检索：按项目、关键词、更新时间获取文档与摘要
-- 文档化任务管理：创建任务文档、更新状态、追加进展、标记完成
+- 飞书文档摘要与差异比较：帮助团队快速理解文档上下文与最近变化
 
 ## 仓库结构
 
@@ -66,17 +66,29 @@ codex marketplace add https://github.com/<your-github-username>/codex-lark-plugi
 - 插件图标与截图
 - 实际的技能与脚本实现
 
+## 本地验证
+
+仓库内置一个基于 Node.js 标准库实现的本地 `stdio` MCP server，以及一份可重复验证的飞书样本文档集。
+
+```bash
+npm run build
+npm run sync:sample
+npm test
+```
+
 ## 当前状态
 
 当前仓库已经具备：
 
 - marketplace 根结构
 - 单插件目录结构
-- 可发布的基础 manifest
+- 可运行的本地 `stdio` MCP 配置
+- 样本文档同步、索引生成与 5 个知识检索 MCP tools
+- 面向 Codex 的知识检索技能定义
 - 文档目录骨架
 
 尚未具备：
 
-- 飞书文档同步实现
+- 真实飞书 API 鉴权与远程同步
+- 低置信度人工校正工作流
 - 任务文档模板与状态管理实现
-- MCP 服务或应用接入实现
