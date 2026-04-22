@@ -68,13 +68,33 @@ codex marketplace add https://github.com/<your-github-username>/codex-lark-plugi
 
 ## 本地验证
 
-仓库内置一个基于 Node.js 标准库实现的本地 `stdio` MCP server，以及一份可重复验证的飞书样本文档集。
+仓库内置一个基于 Node.js 标准库实现的本地 `stdio` MCP server，并支持两类验证路径：
+
+- `sample`：使用仓库内样本文档 fixture，适合本地开发、CI 和无凭证环境
+- `feishu`：使用真实飞书 folder / wiki 根入口，同步到本地索引后再提供 MCP 检索
+
+Sample 模式基线验证：
 
 ```bash
 npm run build
 npm run sync:sample
 npm test
 ```
+
+真实飞书模式联通验证：
+
+```bash
+npm run sync:feishu
+npm run test:feishu-smoke
+```
+
+真实飞书模式需要先在本地 MCP 配置的 `env` 中提供：
+
+- `LARK_DOCS_SOURCE=feishu`
+- `LARK_FEISHU_APP_ID`
+- `LARK_FEISHU_APP_SECRET`
+- `LARK_FEISHU_SYNC_ROOTS`
+- `LARK_INDEX_PATH`
 
 ## 当前状态
 
@@ -83,12 +103,13 @@ npm test
 - marketplace 根结构
 - 单插件目录结构
 - 可运行的本地 `stdio` MCP 配置
-- 样本文档同步、索引生成与 5 个知识检索 MCP tools
+- sample / feishu 双数据源同步入口与本地索引生成
+- 5 个知识检索 MCP tools
 - 面向 Codex 的知识检索技能定义
 - 文档目录骨架
 
 尚未具备：
 
-- 真实飞书 API 鉴权与远程同步
 - 低置信度人工校正工作流
 - 任务文档模板与状态管理实现
+- 已接入真实飞书模式的端到端生产环境验收说明
