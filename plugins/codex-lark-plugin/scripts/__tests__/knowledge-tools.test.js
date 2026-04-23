@@ -83,9 +83,12 @@ test("MCP 请求处理可列出工具并调用摘要接口", async () => {
     { forceSync: true, indexPath }
   );
 
-  assert.equal(listResponse.result.tools.length, 9);
+  assert.equal(listResponse.result.tools.length, 12);
   assert.ok(
     listResponse.result.tools.some((tool) => tool.name === "create_feishu_doc")
+  );
+  assert.ok(
+    listResponse.result.tools.some((tool) => tool.name === "get_docx_blocks")
   );
 
   const summaryResponse = await handleRequest(
@@ -109,6 +112,141 @@ test("MCP 请求处理可列出工具并调用摘要接口", async () => {
     summaryResponse.result.structuredContent.summary,
     /Atlas 平台为知识插件提供自动同步链路/
   );
+});
+
+test("原子读 tool 可以列文件夹、读取 blocks 和获取元数据", async () => {
+  const calls = [];
+  const feishuClient = {
+    async request(path, options = {}) {
+      calls.push({ path, options });
+
+      if (path === "drive/v1/files") {
+        const folderToken = options.searchParams.folder_token;
+
+        if (folderToken === "fld_root") {
+          return {
+            code: 0,
+            data: {
+              files: [
+                {
+                  token: "dox_root",
+                  type: "docx",
+                  name: "根文档",
+                  url: "https://feishu.cn/docx/dox_root",
+                  owner_id: "ou_root",
+                  modified_time: "1713873600"
+                },
+                {
+                  token: "fld_child",
+                  type: "folder",
+                  name: "子目录",
+                  modified_time: "1713873601"
+                }
+              ],
+              has_more: false
+            }
+          };
+        }
+
+        return {
+          code: 0,
+          data: {
+            files: [
+              {
+                token: "dox_child",
+                type: "docx",
+                name: "子文档",
+                url: "https://feishu.cn/docx/dox_child",
+                modified_time: "1713873602"
+              }
+            ],
+            has_more: false
+          }
+        };
+      }
+
+      if (path === "docx/v1/documents/dox_root/blocks") {
+        return {
+          code: 0,
+          data: {
+            items: [
+              {
+                block_id: "blk_text",
+                block_type: 2,
+                parent_id: "dox_root",
+                text: {
+                  elements: [
+                    {
+                      text_run: {
+                        content: "正文"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            has_more: false
+          }
+        };
+      }
+
+      if (path === "drive/v1/metas/batch_query") {
+        return {
+          code: 0,
+          data: {
+            metas: [
+              {
+                doc_token: "dox_root",
+                doc_type: "docx",
+                title: "根文档",
+                owner_id: "ou_root",
+                url: "https://feishu.cn/docx/dox_root"
+              }
+            ]
+          }
+        };
+      }
+
+      throw new Error(`unexpected request: ${path}`);
+    }
+  };
+
+  const files = await executeTool(
+    "list_folder_files",
+    {
+      folder_token: "fld_root",
+      recursive: true,
+      max_depth: 1
+    },
+    { feishuClient }
+  );
+
+  assert.equal(files.total, 3);
+  assert.equal(files.files[2].path, "子目录/子文档");
+
+  const blocks = await executeTool(
+    "get_docx_blocks",
+    { document_id: "dox_root" },
+    { feishuClient }
+  );
+
+  assert.equal(blocks.blocks[0].block_id, "blk_text");
+  assert.equal(blocks.blocks[0].plain_text, "正文");
+  assert.equal(blocks.blocks[0].parent_id, "dox_root");
+
+  const meta = await executeTool(
+    "get_file_meta",
+    { url: "https://feishu.cn/docx/dox_root" },
+    { feishuClient }
+  );
+
+  assert.equal(meta.file_token, "dox_root");
+  assert.equal(meta.file_type, "docx");
+  assert.equal(meta.title, "根文档");
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1).options.body)), {
+    request_docs: [{ doc_token: "dox_root", doc_type: "docx" }],
+    with_url: true
+  });
 });
 
 test("飞书写入 tool 合同定义 4 个默认禁用的写入能力", () => {
@@ -162,11 +300,26 @@ test("飞书写入安全开关必须显式启用", () => {
 test("飞书写入参数校验会拒绝越界操作并保留脱敏上下文", () => {
   const normalizedCreate = validateWriteToolArgs("create_feishu_doc", {
     folder_token: "fldcn_parent",
-    title: "测试文档"
+    title: "测试文档",
+    dry_run: true
   });
 
   assert.equal(normalizedCreate.content_type, "plain_text");
   assert.equal(normalizedCreate.index_after_create, false);
+  assert.equal(normalizedCreate.dry_run, true);
+
+  const normalizedEdit = validateWriteToolArgs("edit_feishu_doc", {
+    document_id: "doxcn_doc",
+    operation: "update_text",
+    block_id: "blk_text",
+    content: "更新",
+    expected_old_text: "旧文本",
+    verify_after_write: true,
+    document_revision_id: "rev_1"
+  });
+
+  assert.equal(normalizedEdit.verify_after_write, true);
+  assert.equal(normalizedEdit.document_revision_id, "rev_1");
 
   assert.throws(
     () =>

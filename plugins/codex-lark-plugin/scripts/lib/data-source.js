@@ -252,7 +252,7 @@ export async function loadDocumentSource(options = {}, env = process.env) {
   };
 }
 
-export async function createFeishuClientForWrite(options = {}, env = process.env) {
+export async function createFeishuClientForTool(options = {}, env = process.env) {
   const appId = normalizeText(options.appId ?? env.LARK_FEISHU_APP_ID);
   const appSecret = normalizeText(
     options.appSecret ?? env.LARK_FEISHU_APP_SECRET
@@ -280,7 +280,7 @@ export async function createFeishuClientForWrite(options = {}, env = process.env
 
   if (tokenMode === "tenant" && (!appId || !appSecret)) {
     throw new Error(
-      "调用飞书写入 tool 时，tenant 模式必须提供 LARK_FEISHU_APP_ID 和 LARK_FEISHU_APP_SECRET。"
+      "调用真实飞书 MCP tool 时，tenant 模式必须提供 LARK_FEISHU_APP_ID 和 LARK_FEISHU_APP_SECRET。"
     );
   }
 
@@ -328,4 +328,8 @@ export async function createFeishuClientForWrite(options = {}, env = process.env
           : undefined
     }
   );
+}
+
+export async function createFeishuClientForWrite(options = {}, env = process.env) {
+  return createFeishuClientForTool(options, env);
 }

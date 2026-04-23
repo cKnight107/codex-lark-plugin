@@ -15,3 +15,5 @@
   - 在现有样本文档闭环基础上，补充真实飞书 API 接入的提案文档，当前处于 `spec-propose` 阶段。
 - [feishu-docs-write-tools](./feishu-docs-write-tools/spec.md)
   - 为飞书新版文档和 Drive 云空间补充创建文档、受控编辑、创建文件夹、移动文件 MCP tool 的提案文档，当前处于 `spec-propose` 阶段。
+- [feishu-safe-atomic-toolbox](./feishu-safe-atomic-toolbox/spec.md)
+  - 将插件产品方向收敛为飞书文档/云盘安全原子工具箱，并规划原子读写能力与少量高阶模板，当前处于 `spec-propose` 阶段。

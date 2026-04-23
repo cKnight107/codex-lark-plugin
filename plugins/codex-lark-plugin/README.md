@@ -9,6 +9,7 @@
 - 团队知识库文档检索
 - 项目文档摘要
 - 最近更新查询与文档差异比较
+- 飞书云空间原子读能力：列文件夹、读取 docx blocks、获取文件元数据
 - 显式开启后的飞书文档创建、受控块编辑、文件夹创建和文件移动
 
 当前支持两种数据源模式：
@@ -22,6 +23,33 @@
 - `user`：用户身份，适合“我的文件夹”或仅当前用户可访问的云文档资源
 
 写入能力默认关闭，只有配置 `LARK_FEISHU_WRITE_ENABLED=true` 后才会允许调用写入型 MCP tools。只读检索能力不需要开启该开关。
+
+## MCP Tools
+
+当前暴露 12 个 MCP tools。
+
+只读检索 tools：
+
+- `list_project_docs`：按项目列出本地索引中的文档。
+- `search_docs`：按关键词检索本地索引。
+- `get_doc_summary`：读取本地索引中的摘要与元数据。
+- `list_recent_docs`：列出最近更新文档。
+- `compare_doc_changes`：比较本地 revision 快照差异。
+
+飞书原子读 tools：
+
+- `list_folder_files`：按 `folder_token` 列飞书文件夹，支持递归、深度和数量上限。
+- `get_docx_blocks`：分页读取新版 docx blocks，返回 `block_id`、`block_type`、`plain_text`、`elements`、`parent_id`。
+- `get_file_meta`：按 token 或 URL 查询文件元信息。
+
+写入 tools：
+
+- `create_feishu_doc`：创建新版 docx 文档，可选 `dry_run` 预览。
+- `edit_feishu_doc`：追加、插入或更新文本块，支持 `dry_run`、diff、`expected_old_text`、`document_revision_id`、`verify_after_write`。
+- `create_feishu_folder`：创建文件夹，可选 `dry_run` 预览。
+- `move_feishu_file`：移动文件或文件夹，可选 `dry_run` 预览。
+
+后续新增具体操作时，优先用原子读写 tools 组合；只有高频、稳定、可审计的流程才沉淀为高阶模板。
 
 ## 目录说明
 

@@ -222,8 +222,159 @@ test("edit_feishu_doc 支持 append、insert 与 update_text", async () => {
   assert.match(writeRequests[0].url, /blocks\/doxcn_doc\/children/);
   assert.equal(JSON.parse(writeRequests[1].body).index, 0);
   assert.equal(writeRequests[2].method, "PATCH");
-  assert.match(writeRequests[2].url, /blocks\/blk_text$/);
+  assert.match(writeRequests[2].url, /blocks\/blk_text\?document_revision_id=-1$/);
   assert.match(writeRequests[2].body, /update_text_elements/);
+});
+
+test("写入 dry_run 会返回 diff 预览且不执行写 API", async () => {
+  const calls = [];
+  const feishuClient = {
+    async request(path, options = {}) {
+      calls.push({ path, options });
+
+      if (path === "docx/v1/documents/doxcn_doc/blocks") {
+        return {
+          code: 0,
+          data: {
+            items: [
+              {
+                block_id: "blk_text",
+                block_type: 2,
+                text: {
+                  elements: [
+                    {
+                      text_run: {
+                        content: "旧文本"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            has_more: false
+          }
+        };
+      }
+
+      throw new Error(`unexpected write request: ${path}`);
+    }
+  };
+
+  const preview = await executeTool(
+    "edit_feishu_doc",
+    {
+      document_id: "doxcn_doc",
+      operation: "update_text",
+      block_id: "blk_text",
+      content: "新文本",
+      dry_run: true
+    },
+    {
+      env: createWriteEnv(),
+      feishuClient
+    }
+  );
+
+  assert.equal(preview.dry_run, true);
+  assert.deepEqual(preview.diff, {
+    before: "旧文本",
+    after: "新文本"
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, "docx/v1/documents/doxcn_doc/blocks");
+
+  const folderPreview = await executeTool(
+    "create_feishu_folder",
+    {
+      parent_folder_token: "fldcn_parent",
+      name: "预览文件夹",
+      dry_run: true
+    },
+    {
+      env: createWriteEnv(),
+      feishuClient
+    }
+  );
+
+  assert.equal(folderPreview.dry_run, true);
+  assert.equal(folderPreview.name, "预览文件夹");
+  assert.equal(calls.length, 1);
+});
+
+test("update_text 支持 expected_old_text 与 verify_after_write", async () => {
+  const calls = [];
+  let readCount = 0;
+  const feishuClient = {
+    async request(path, options = {}) {
+      calls.push({ path, options });
+
+      if (path === "docx/v1/documents/doxcn_doc/blocks") {
+        readCount += 1;
+        return {
+          code: 0,
+          data: {
+            items: [
+              {
+                block_id: "blk_text",
+                block_type: 2,
+                text: {
+                  elements: [
+                    {
+                      text_run: {
+                        content: readCount === 1 ? "旧文本" : "新文本"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            has_more: false
+          }
+        };
+      }
+
+      if (path === "docx/v1/documents/doxcn_doc/blocks/blk_text") {
+        return {
+          code: 0,
+          data: {
+            block_id: "blk_text"
+          }
+        };
+      }
+
+      throw new Error(`unexpected request: ${path}`);
+    }
+  };
+
+  const result = await executeTool(
+    "edit_feishu_doc",
+    {
+      document_id: "doxcn_doc",
+      operation: "update_text",
+      block_id: "blk_text",
+      content: "新文本",
+      expected_old_text: "旧文本",
+      verify_after_write: true,
+      document_revision_id: "rev_1"
+    },
+    {
+      env: createWriteEnv(),
+      feishuClient
+    }
+  );
+
+  assert.equal(result.updated, true);
+  assert.equal(result.verified, true);
+  assert.deepEqual(result.diff, {
+    before: "旧文本",
+    after: "新文本"
+  });
+
+  const patchCall = calls.find(
+    (call) => call.path === "docx/v1/documents/doxcn_doc/blocks/blk_text"
+  );
+  assert.equal(patchCall.options.method, "PATCH");
+  assert.equal(patchCall.options.searchParams.document_revision_id, "rev_1");
 });
 
 test("Drive 写入 tool 会创建文件夹并移动文件", async () => {

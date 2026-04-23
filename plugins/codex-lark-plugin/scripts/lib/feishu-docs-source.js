@@ -1,3 +1,8 @@
+import {
+  getDocxRawContent,
+  listFolderFilesPage
+} from "./feishu-read-tools.js";
+
 function normalizeText(value) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -53,43 +58,40 @@ function upsertDocument(documentsById, document) {
 }
 
 async function fetchDocxContent(client, documentId, context = {}) {
-  // 官方文档：GET /open-apis/docx/v1/documents/:document_id/raw_content
-  // Source: https://open.feishu.cn/document/server-docs/docs/docs/docx-v1/document/raw_content
-  const response = await client.request(
-    `docx/v1/documents/${documentId}/raw_content`,
-    {
-      context: {
-        document_id: documentId,
-        ...context
+  const result = await getDocxRawContent({
+    client: {
+      request(path, options = {}) {
+        return client.request(path, {
+          ...options,
+          context: {
+            ...(options.context ?? {}),
+            ...context
+          }
+        });
       }
+    },
+    args: {
+      document_id: documentId
     }
-  );
+  });
 
-  return normalizeText(response.data?.content);
+  return result.content;
 }
 
-async function listFolderFiles(client, folderToken) {
+async function listAllFolderFiles(client, folderToken) {
   const files = [];
   let pageToken;
 
   do {
-    // 官方文档：GET /open-apis/drive/v1/files
-    // Source: https://open.feishu.cn/document/server-docs/docs/drive-v1/folder/list
-    const response = await client.request("drive/v1/files", {
-      searchParams: {
-        folder_token: folderToken,
-        page_size: 200,
-        page_token: pageToken,
-        order_by: "EditedTime",
-        direction: "DESC"
-      },
-      context: {
-        folder_token: folderToken
-      }
+    const page = await listFolderFilesPage({
+      client,
+      folderToken,
+      pageToken,
+      pageSize: 200
     });
 
-    files.push(...(response.data?.files ?? []));
-    pageToken = response.data?.has_more ? response.data?.next_page_token : null;
+    files.push(...page.files);
+    pageToken = page.has_more ? page.next_page_token : null;
   } while (pageToken);
 
   return files;
@@ -178,7 +180,7 @@ async function collectFolderRootDocuments(client, root, documentsById) {
 
   while (queue.length > 0) {
     const current = queue.shift();
-    const files = await listFolderFiles(client, current.token);
+    const files = await listAllFolderFiles(client, current.token);
 
     for (const entry of files) {
       if (entry.type === "folder") {
