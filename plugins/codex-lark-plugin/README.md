@@ -38,7 +38,7 @@
 进行暴露。发布到 GitHub 后，推荐用户通过：
 
 ```bash
-codex marketplace add https://github.com/<your-github-username>/codex-lark-plugin.git
+codex marketplace add https://github.com/cKnight107/codex-lark-plugin
 ```
 
 来接入整个 marketplace。
