@@ -96,6 +96,17 @@ npm run test:feishu-smoke
 - `LARK_FEISHU_SYNC_ROOTS`
 - `LARK_INDEX_PATH`
 
+如果你是通过 Codex marketplace 安装插件，建议把飞书 token 和索引写到独立运行时目录，而不是仓库目录：
+
+- 推荐运行时目录：`~/.codex/codex-lark-plugin/`
+- 推荐索引路径：`~/.codex/codex-lark-plugin/index.json`
+- 推荐 user token 路径：`~/.codex/codex-lark-plugin/feishu-user-token.json`
+
+插件包本体通常位于：
+
+- `~/.codex/plugins/cache/codex-lark-marketplace/codex-lark-plugin/<version>/`
+
+
 ## 当前状态
 
 当前仓库已经具备：
