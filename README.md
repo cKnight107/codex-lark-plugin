@@ -189,6 +189,40 @@ npm run login:feishu-oauth
 ~/.codex/codex-lark-plugin/feishu-user-token.json
 ```
 
+### 10.1 当前 user token 刷新机制
+
+当前插件对 `user_access_token` 的处理方式不是后台定时刷新，而是在真正发起飞书 API 请求前做一次检查。
+
+工作流程如下：
+
+1. 先从环境变量和 `LARK_FEISHU_USER_TOKEN_PATH` 指向的本地文件读取
+   `user_access_token`、`refresh_token` 以及它们各自的过期时间
+2. 每次请求飞书前，如果 `LARK_FEISHU_TOKEN_MODE=user`，插件会先判断
+   `user_access_token` 是否仍然有效
+3. 如果 `user_access_token` 还没过期，就直接使用当前 token 发请求
+4. 如果已经过期，但本地仍然有 `refresh_token`，插件会先获取
+   `app_access_token`，再调用飞书的 `authen/v1/refresh_access_token`
+   换取新的 `user_access_token`
+5. 刷新成功后，新的 `user_access_token`、`refresh_token` 和过期时间会回写到
+   `LARK_FEISHU_USER_TOKEN_PATH` 对应的本地文件，供后续请求继续复用
+
+可以把它理解成“请求时懒刷新”：
+
+- 没有独立的后台定时任务
+- 只有真正要访问飞书时才会检查是否过期
+- 过期后优先自动刷新，刷新不了才需要重新授权
+
+要让这套机制正常工作，需要同时满足：
+
+- `LARK_FEISHU_TOKEN_MODE=user`
+- 已经通过 `npm run login:feishu-oauth` 拿到并保存过用户 token
+- OAuth scope 里包含 `offline_access`
+- 仍然保留 `LARK_FEISHU_APP_ID` 和 `LARK_FEISHU_APP_SECRET`
+  因为刷新 `user_access_token` 时需要先获取应用级 token
+
+如果缺少 `refresh_token`，或者授权时没有拿到 `offline_access`，那用户 token
+过期后就无法自动续期，只能重新执行一次 OAuth 登录。
+
 ### 10. 拿到用户 token 后怎么切回 MCP 配置
 
 用户授权完成后，确保 `.mcp.json` 里的关键字段至少是这几个：
