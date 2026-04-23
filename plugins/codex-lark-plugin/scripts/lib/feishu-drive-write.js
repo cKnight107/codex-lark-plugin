@@ -39,6 +39,23 @@ function extractFolder(response, name, parentFolderToken) {
 }
 
 export async function createFeishuFolder({ client, args }) {
+  if (args.dry_run) {
+    return {
+      operation: "create_feishu_folder",
+      dry_run: true,
+      parent_folder_token: args.parent_folder_token,
+      name: args.name,
+      would_write: true,
+      diff: {
+        before: null,
+        after: {
+          parent_folder_token: args.parent_folder_token,
+          name: args.name
+        }
+      }
+    };
+  }
+
   const response = await client.request(createFolderPath, {
     method: "POST",
     body: {
@@ -54,6 +71,26 @@ export async function createFeishuFolder({ client, args }) {
 }
 
 export async function moveFeishuFile({ client, args }) {
+  if (args.dry_run) {
+    return {
+      operation: "move_feishu_file",
+      dry_run: true,
+      file_token: args.file_token,
+      file_type: args.file_type,
+      target_folder_token: args.target_folder_token,
+      would_write: true,
+      diff: {
+        before: {
+          file_token: args.file_token,
+          file_type: args.file_type
+        },
+        after: {
+          target_folder_token: args.target_folder_token
+        }
+      }
+    };
+  }
+
   const response = await client.request(
     `drive/v1/files/${args.file_token}/move`,
     {

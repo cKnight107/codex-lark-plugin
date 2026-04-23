@@ -27,7 +27,7 @@ const summary = {
   mcpWriteEnabled: serverEnv.LARK_FEISHU_WRITE_ENABLED ?? "false"
 };
 
-if (summary.registeredTools.length !== 9) {
+if (summary.registeredTools.length !== 12) {
   throw new Error("MCP tools 数量不正确。");
 }
 

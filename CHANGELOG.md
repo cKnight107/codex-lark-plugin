@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+- 新增飞书原子读 MCP tools：`list_folder_files`、`get_docx_blocks`、`get_file_meta`
+- 新增 `feishu-read-tools.js`，统一封装文件夹分页读取、docx block 读取、raw content 读取与文件元数据查询
+- 让现有飞书同步链路复用可复用读服务，减少同步逻辑与 MCP tool 的重复实现
+- 为写入工具增加 `dry_run` 预览、`diff` 返回、`document_revision_id` 透传、`expected_old_text` 断言与 `verify_after_write` 校验
+- 为创建文件夹和移动文件补充 dry-run 预览能力
+- 扩展无凭证自动化测试与运行时校验，MCP tools 数量从 9 个增加到 12 个
+- 更新插件 README、知识检索 skill、写入 skill，以及 `feishu-safe-atomic-toolbox` 的 spec/tasks/log 文档
+
 ## 0.2.0
 
 - 将第一版边界收敛为飞书知识检索闭环，不再把任务文档管理纳入当前版本承诺

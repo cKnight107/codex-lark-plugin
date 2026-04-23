@@ -1,9 +1,17 @@
-import { createFeishuClientForWrite } from "./data-source.js";
+import {
+  createFeishuClientForTool,
+  createFeishuClientForWrite
+} from "./data-source.js";
 import { createFeishuDoc, editFeishuDoc } from "./feishu-doc-write.js";
 import {
   createFeishuFolder,
   moveFeishuFile
 } from "./feishu-drive-write.js";
+import {
+  getDocxBlocks,
+  getFileMeta,
+  listFolderFilesTool
+} from "./feishu-read-tools.js";
 import {
   assertFeishuWriteEnabled,
   isWriteTool,
@@ -75,10 +83,120 @@ const readToolDefinitions = [
       },
       required: ["doc_id"]
     }
+  },
+  {
+    name: "list_folder_files",
+    description: "按 folder_token 列出飞书云空间文件夹内容，可选递归返回路径。",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        folder_token: {
+          type: "string",
+          minLength: 1,
+          description: "目标飞书文件夹 token。"
+        },
+        recursive: {
+          type: "boolean",
+          default: false,
+          description: "是否递归列出子文件夹。"
+        },
+        max_depth: {
+          type: "integer",
+          minimum: 0,
+          maximum: 20,
+          default: 0,
+          description: "递归最大深度；recursive=false 时忽略。"
+        },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 1000,
+          default: 100,
+          description: "最多返回文件数量。"
+        }
+      },
+      required: ["folder_token"]
+    }
+  },
+  {
+    name: "get_docx_blocks",
+    description: "分页读取新版飞书 docx 文档块，返回 block_id、类型、纯文本、elements 和父块信息。",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        document_id: {
+          type: "string",
+          minLength: 1,
+          description: "目标 docx 文档 ID。"
+        },
+        page_size: {
+          type: "integer",
+          minimum: 1,
+          maximum: 500,
+          default: 100
+        },
+        page_token: {
+          type: "string"
+        },
+        document_revision_id: {
+          type: "string",
+          description: "可选文档版本 ID，用于读取指定版本块结构。"
+        }
+      },
+      required: ["document_id"]
+    }
+  },
+  {
+    name: "get_file_meta",
+    description: "按 token 或飞书 URL 获取文件元信息，包含类型、标题、链接和所有者等字段。",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        token: {
+          type: "string",
+          description: "文件 token；也可使用 file_token。"
+        },
+        file_token: {
+          type: "string",
+          description: "文件 token。"
+        },
+        url: {
+          type: "string",
+          description: "飞书文件 URL，可用于推断 token 和 file_type。"
+        },
+        file_type: {
+          type: "string",
+          enum: [
+            "doc",
+            "docx",
+            "sheet",
+            "bitable",
+            "mindnote",
+            "slides",
+            "file",
+            "folder"
+          ],
+          description: "文件类型；无法从 token 或 URL 推断时必填。"
+        },
+        with_url: {
+          type: "boolean",
+          default: true,
+          description: "是否要求飞书返回 URL。"
+        }
+      }
+    }
   }
 ];
 
 export const toolDefinitions = [...readToolDefinitions, ...writeToolDefinitions];
+const atomicReadToolNames = new Set([
+  "list_folder_files",
+  "get_docx_blocks",
+  "get_file_meta"
+]);
 
 function slimDocument(document) {
   return {
@@ -182,6 +300,10 @@ export async function executeTool(name, args = {}, options = {}) {
     return executeWriteTool(name, args, options);
   }
 
+  if (atomicReadToolNames.has(name)) {
+    return executeAtomicReadTool(name, args, options);
+  }
+
   const { index } = await ensureIndex(options);
   const documents = index.documents ?? [];
 
@@ -270,6 +392,26 @@ export async function executeTool(name, args = {}, options = {}) {
 
     default:
       throw new Error(`未知 tool: ${name}`);
+  }
+}
+
+async function executeAtomicReadTool(name, args = {}, options = {}) {
+  const client =
+    options.feishuClient ??
+    (await createFeishuClientForTool(options, options.env ?? process.env));
+
+  switch (name) {
+    case "list_folder_files":
+      return listFolderFilesTool({ client, args });
+
+    case "get_docx_blocks":
+      return getDocxBlocks({ client, args });
+
+    case "get_file_meta":
+      return getFileMeta({ client, args });
+
+    default:
+      throw new Error(`未知原子读 tool: ${name}`);
   }
 }
 

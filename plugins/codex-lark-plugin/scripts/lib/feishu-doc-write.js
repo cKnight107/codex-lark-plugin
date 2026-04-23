@@ -1,4 +1,5 @@
 import { FeishuApiError } from "./feishu-client.js";
+import { getDocxBlocks } from "./feishu-read-tools.js";
 
 const blockKeysByType = new Map([
   [2, "text"],
@@ -161,6 +162,27 @@ function extractDocument(response, fallbackTitle, fallbackFolderToken) {
 }
 
 export async function createFeishuDoc({ client, args }) {
+  const blocks = contentToBlocks(args.content, args.content_type);
+
+  if (args.dry_run) {
+    return {
+      operation: "create_feishu_doc",
+      dry_run: true,
+      folder_token: args.folder_token,
+      title: args.title,
+      content_type: args.content_type,
+      planned_block_count: blocks.length,
+      diff: {
+        before: null,
+        after: {
+          title: args.title,
+          block_count: blocks.length
+        }
+      },
+      would_write: true
+    };
+  }
+
   const response = await client.request("docx/v1/documents", {
     method: "POST",
     body: {
@@ -172,7 +194,6 @@ export async function createFeishuDoc({ client, args }) {
     }
   });
   const document = extractDocument(response, args.title, args.folder_token);
-  const blocks = contentToBlocks(args.content, args.content_type);
 
   if (blocks.length === 0) {
     return {
@@ -199,11 +220,36 @@ export async function createFeishuDoc({ client, args }) {
 }
 
 export async function editFeishuDoc({ client, args }) {
+  if (args.dry_run) {
+    return previewEditFeishuDoc({ client, args });
+  }
+
   if (args.operation === "update_text") {
+    const beforeBlock = await readBlockIfNeeded({
+      client,
+      documentId: args.document_id,
+      blockId: args.block_id,
+      documentRevisionId: args.document_revision_id,
+      required:
+        args.expected_old_text !== undefined || args.verify_after_write
+    });
+
+    if (
+      args.expected_old_text !== undefined &&
+      beforeBlock?.plain_text !== args.expected_old_text
+    ) {
+      throw new Error(
+        `目标块原文本与 expected_old_text 不一致，已拒绝写入。block_id=${args.block_id}`
+      );
+    }
+
     const response = await client.request(
       `docx/v1/documents/${args.document_id}/blocks/${args.block_id}`,
       {
         method: "PATCH",
+        searchParams: {
+          document_revision_id: args.document_revision_id || "-1"
+        },
         body: {
           update_text_elements: {
             elements: textElements(args.content)
@@ -217,12 +263,28 @@ export async function editFeishuDoc({ client, args }) {
         }
       }
     );
+    const afterBlock = args.verify_after_write
+      ? await requireDocxBlock({
+          client,
+          documentId: args.document_id,
+          blockId: args.block_id,
+          documentRevisionId: args.document_revision_id
+        })
+      : null;
+    const verified = args.verify_after_write
+      ? afterBlock.plain_text === args.content
+      : false;
 
     return {
       document_id: args.document_id,
       operation: args.operation,
       block_id: args.block_id,
       updated: true,
+      diff: {
+        before: beforeBlock?.plain_text ?? null,
+        after: args.content
+      },
+      verified,
       response: response.data ?? {}
     };
   }
@@ -236,8 +298,21 @@ export async function editFeishuDoc({ client, args }) {
     blocks,
     index: args.operation === "insert" ? args.index : undefined,
     operation: args.operation,
-    contentType: args.content_type
+    contentType: args.content_type,
+    documentRevisionId: args.document_revision_id
   });
+  const createdBlocks = response.data?.children ?? response.data?.blocks ?? [];
+  const createdBlockIds = createdBlocks
+    .map((block) => normalizeText(block.block_id))
+    .filter(Boolean);
+  const verified = args.verify_after_write
+    ? await verifyCreatedBlocks({
+        client,
+        documentId: args.document_id,
+        blockIds: createdBlockIds,
+        documentRevisionId: args.document_revision_id
+      })
+    : false;
 
   return {
     document_id: args.document_id,
@@ -245,7 +320,12 @@ export async function editFeishuDoc({ client, args }) {
     parent_block_id: parentBlockId,
     inserted_at: args.operation === "insert" ? args.index : undefined,
     written_block_count: blocks.length,
-    created_blocks: response.data?.children ?? response.data?.blocks ?? []
+    created_blocks: createdBlocks,
+    diff: {
+      before: null,
+      after: blocks.map((block) => blockPlainText(block)).join("\n")
+    },
+    verified
   };
 }
 
@@ -256,7 +336,8 @@ async function createDocumentBlocks({
   blocks,
   index,
   operation = "append",
-  contentType = "plain_text"
+  contentType = "plain_text",
+  documentRevisionId
 }) {
   const body = {
     children: blocks
@@ -271,7 +352,7 @@ async function createDocumentBlocks({
     {
       method: "POST",
       searchParams: {
-        document_revision_id: "-1"
+        document_revision_id: documentRevisionId || "-1"
       },
       body,
       context: {
@@ -282,4 +363,144 @@ async function createDocumentBlocks({
       }
     }
   );
+}
+
+async function previewEditFeishuDoc({ client, args }) {
+  if (args.operation === "update_text") {
+    const beforeBlock = await readBlockIfNeeded({
+      client,
+      documentId: args.document_id,
+      blockId: args.block_id,
+      documentRevisionId: args.document_revision_id,
+      required: true
+    });
+
+    return {
+      document_id: args.document_id,
+      operation: args.operation,
+      block_id: args.block_id,
+      dry_run: true,
+      would_write: beforeBlock?.plain_text !== args.content,
+      diff: {
+        before: beforeBlock?.plain_text ?? null,
+        after: args.content
+      },
+      verified: false
+    };
+  }
+
+  const blocks = contentToBlocks(args.content, args.content_type);
+  const parentBlockId = args.parent_block_id || args.document_id;
+
+  return {
+    document_id: args.document_id,
+    operation: args.operation,
+    parent_block_id: parentBlockId,
+    inserted_at: args.operation === "insert" ? args.index : undefined,
+    dry_run: true,
+    would_write: blocks.length > 0,
+    planned_block_count: blocks.length,
+    diff: {
+      before: null,
+      after: blocks.map((block) => blockPlainText(block)).join("\n")
+    },
+    verified: false
+  };
+}
+
+async function readBlockIfNeeded({
+  client,
+  documentId,
+  blockId,
+  documentRevisionId,
+  required
+}) {
+  if (!required) {
+    return null;
+  }
+
+  return requireDocxBlock({
+    client,
+    documentId,
+    blockId,
+    documentRevisionId
+  });
+}
+
+async function requireDocxBlock({
+  client,
+  documentId,
+  blockId,
+  documentRevisionId
+}) {
+  let pageToken;
+
+  do {
+    const result = await getDocxBlocks({
+      client,
+      args: {
+        document_id: documentId,
+        page_size: 500,
+        page_token: pageToken,
+        document_revision_id: documentRevisionId
+      }
+    });
+    const found = result.blocks.find((block) => block.block_id === blockId);
+
+    if (found) {
+      return found;
+    }
+
+    pageToken = result.has_more ? result.next_page_token : "";
+  } while (pageToken);
+
+  throw new Error(`未找到目标块: ${blockId}`);
+}
+
+async function verifyCreatedBlocks({
+  client,
+  documentId,
+  blockIds,
+  documentRevisionId
+}) {
+  if (blockIds.length === 0) {
+    return false;
+  }
+
+  const remaining = new Set(blockIds);
+  let pageToken;
+
+  do {
+    const result = await getDocxBlocks({
+      client,
+      args: {
+        document_id: documentId,
+        page_size: 500,
+        page_token: pageToken,
+        document_revision_id: documentRevisionId
+      }
+    });
+
+    for (const block of result.blocks) {
+      remaining.delete(block.block_id);
+    }
+
+    pageToken = result.has_more && remaining.size > 0 ? result.next_page_token : "";
+  } while (pageToken);
+
+  return remaining.size === 0;
+}
+
+function blockPlainText(block) {
+  const key = blockKeysByType.get(block.block_type);
+  const elements = key && block[key]?.elements;
+
+  if (!Array.isArray(elements)) {
+    return "";
+  }
+
+  return elements
+    .map((element) => normalizeText(element.text_run?.content))
+    .filter(Boolean)
+    .join("");
 }

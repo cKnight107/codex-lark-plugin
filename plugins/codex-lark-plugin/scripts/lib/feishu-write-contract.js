@@ -29,6 +29,9 @@ const safeContextKeys = new Set([
   "parent_block_id",
   "operation",
   "content_type",
+  "dry_run",
+  "document_revision_id",
+  "verify_after_write",
   "http_status",
   "feishu_code"
 ]);
@@ -67,6 +70,11 @@ export const writeToolDefinitions = [
           type: "boolean",
           default: false,
           description: "创建后是否强制刷新本地索引。"
+        },
+        dry_run: {
+          type: "boolean",
+          default: false,
+          description: "仅返回写入预览，不创建文档或写入内容。"
         }
       },
       required: ["folder_token", "title"]
@@ -120,6 +128,25 @@ export const writeToolDefinitions = [
           type: "boolean",
           default: false,
           description: "编辑后是否强制刷新本地索引。"
+        },
+        dry_run: {
+          type: "boolean",
+          default: false,
+          description: "仅返回编辑预览和 diff，不执行写入。"
+        },
+        document_revision_id: {
+          type: "string",
+          minLength: 1,
+          description: "可选文档版本 ID，用于并发保护；未传时沿用最新版本。"
+        },
+        expected_old_text: {
+          type: "string",
+          description: "update_text 可选原文本断言，不匹配时拒绝写入。"
+        },
+        verify_after_write: {
+          type: "boolean",
+          default: false,
+          description: "写入后读取目标块或创建块进行校验。"
         }
       },
       required: ["document_id", "operation", "content"]
@@ -142,6 +169,11 @@ export const writeToolDefinitions = [
           minLength: 1,
           maxLength: MAX_FOLDER_NAME_LENGTH,
           description: "新文件夹名称。"
+        },
+        dry_run: {
+          type: "boolean",
+          default: false,
+          description: "仅返回创建文件夹预览，不执行写入。"
         }
       },
       required: ["parent_folder_token", "name"]
@@ -168,6 +200,11 @@ export const writeToolDefinitions = [
           type: "string",
           minLength: 1,
           description: "目标文件夹 token。"
+        },
+        dry_run: {
+          type: "boolean",
+          default: false,
+          description: "仅返回移动预览，不执行移动。"
         }
       },
       required: ["file_token", "file_type", "target_folder_token"]
@@ -222,10 +259,12 @@ export function validateWriteToolArgs(toolName, args = {}) {
       validateOptionalContent(args.content, toolName);
       validateContentType(args.content_type, toolName);
       validateOptionalBoolean(args.index_after_create, "index_after_create", toolName);
+      validateOptionalBoolean(args.dry_run, "dry_run", toolName);
       return {
         ...args,
         content_type: args.content_type ?? "plain_text",
-        index_after_create: args.index_after_create ?? false
+        index_after_create: args.index_after_create ?? false,
+        dry_run: args.dry_run ?? false
       };
 
     case "edit_feishu_doc":
@@ -236,6 +275,13 @@ export function validateWriteToolArgs(toolName, args = {}) {
       });
       validateContentType(args.content_type, toolName);
       validateOptionalBoolean(args.refresh_index, "refresh_index", toolName);
+      validateOptionalBoolean(args.dry_run, "dry_run", toolName);
+      validateOptionalBoolean(args.verify_after_write, "verify_after_write", toolName);
+      validateOptionalString(args.document_revision_id, "document_revision_id", toolName);
+      validateOptionalString(args.expected_old_text, "expected_old_text", toolName, {
+        allowEmpty: true,
+        maxLength: MAX_WRITE_CONTENT_LENGTH
+      });
 
       if (args.operation === "insert") {
         requireString(args.parent_block_id, "parent_block_id", toolName);
@@ -249,18 +295,25 @@ export function validateWriteToolArgs(toolName, args = {}) {
       return {
         ...args,
         content_type: args.content_type ?? "plain_text",
-        refresh_index: args.refresh_index ?? false
+        refresh_index: args.refresh_index ?? false,
+        dry_run: args.dry_run ?? false,
+        verify_after_write: args.verify_after_write ?? false
       };
 
     case "create_feishu_folder":
       requireString(args.parent_folder_token, "parent_folder_token", toolName);
       requireFolderName(args.name, toolName);
-      return args;
+      validateOptionalBoolean(args.dry_run, "dry_run", toolName);
+      return {
+        ...args,
+        dry_run: args.dry_run ?? false
+      };
 
     case "move_feishu_file":
       requireString(args.file_token, "file_token", toolName);
       requireEnum(args.file_type, "file_type", movableFileTypes, toolName);
       requireString(args.target_folder_token, "target_folder_token", toolName);
+      validateOptionalBoolean(args.dry_run, "dry_run", toolName);
 
       if (args.file_token === args.target_folder_token) {
         throw validationError(
@@ -274,7 +327,10 @@ export function validateWriteToolArgs(toolName, args = {}) {
         );
       }
 
-      return args;
+      return {
+        ...args,
+        dry_run: args.dry_run ?? false
+      };
 
     default:
       throw new Error(`未知写入 tool: ${toolName}`);
@@ -306,6 +362,17 @@ function validateOptionalBoolean(value, field, toolName) {
   }
 
   throw validationError(`${field} 必须是布尔值。`, toolName);
+}
+
+function validateOptionalString(value, field, toolName, options = {}) {
+  if (value === undefined) {
+    return;
+  }
+
+  requireString(value, field, toolName, {
+    allowEmpty: options.allowEmpty ?? false,
+    maxLength: options.maxLength
+  });
 }
 
 function requireFolderName(value, toolName) {
