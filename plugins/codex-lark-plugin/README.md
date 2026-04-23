@@ -9,6 +9,7 @@
 - 团队知识库文档检索
 - 项目文档摘要
 - 最近更新查询与文档差异比较
+- 显式开启后的飞书文档创建、受控块编辑、文件夹创建和文件移动
 
 当前支持两种数据源模式：
 
@@ -20,10 +21,12 @@
 - `tenant`：应用身份，适合企业共享目录、wiki 根等应用可读资源
 - `user`：用户身份，适合“我的文件夹”或仅当前用户可访问的云文档资源
 
+写入能力默认关闭，只有配置 `LARK_FEISHU_WRITE_ENABLED=true` 后才会允许调用写入型 MCP tools。只读检索能力不需要开启该开关。
+
 ## 目录说明
 
 - `.codex-plugin/plugin.json`：插件 manifest
-- `skills/`：面向 Codex 的知识检索技能定义
+- `skills/`：面向 Codex 的知识检索与写入技能定义
 - `scripts/`：样本文档同步、索引构建与 MCP server 脚本
 - `data/`：用于本地验证的飞书样本文档 fixture
 - `assets/`：图标、截图等静态资源
@@ -96,6 +99,7 @@ node plugins/codex-lark-plugin/scripts/server.js
 - `LARK_DOCS_SOURCE=feishu`
 - `LARK_FEISHU_SYNC_ROOTS`
 - `LARK_INDEX_PATH`
+- `LARK_FEISHU_WRITE_ENABLED=false`
 
 默认鉴权模式是 `tenant`，此时还需要：
 
@@ -112,6 +116,17 @@ node plugins/codex-lark-plugin/scripts/server.js
 
 - `LARK_INDEX_PATH=~/.codex/codex-lark-plugin/index.json`
 - `LARK_FEISHU_USER_TOKEN_PATH=~/.codex/codex-lark-plugin/feishu-user-token.json`
+
+如果要使用文档创建、编辑、文件夹创建或文件移动能力，需要额外设置：
+
+```json
+{
+  "LARK_FEISHU_WRITE_ENABLED": "true",
+  "LARK_FEISHU_OAUTH_SCOPE": "offline_access drive:drive space:document:retrieve docx:document"
+}
+```
+
+写入建议优先使用 `user` 模式，因为创建到个人可访问空间、编辑个人文档和移动文件时，用户身份的权限语义更直观。`tenant` 模式也支持，但目标文件夹或文档必须已授予应用身份对应权限。
 
 `LARK_FEISHU_SYNC_ROOTS` 的格式是 JSON 数组，例如：
 
@@ -183,7 +198,8 @@ mkdir -p ~/.codex/codex-lark-plugin
   "LARK_FEISHU_TOKEN_MODE": "user",
   "LARK_FEISHU_USER_TOKEN_PATH": "~/.codex/codex-lark-plugin/feishu-user-token.json",
   "LARK_FEISHU_OAUTH_REDIRECT_URI": "http://127.0.0.1:3333/callback",
-  "LARK_FEISHU_OAUTH_SCOPE": "offline_access drive:drive:readonly space:document:retrieve docx:document:readonly"
+  "LARK_FEISHU_OAUTH_SCOPE": "offline_access drive:drive space:document:retrieve docx:document",
+  "LARK_FEISHU_WRITE_ENABLED": "false"
 }
 ```
 
@@ -197,6 +213,8 @@ mkdir -p ~/.codex/codex-lark-plugin
 
 - 列文件夹至少需要：`drive:drive:readonly`
 - 读取文档正文至少需要：`docx:document:readonly`
+- 创建文件夹、移动文件至少需要：`drive:drive`
+- 创建和编辑新版文档至少需要：`docx:document`
 - 如果新增了权限，必须重新走一次 OAuth 授权；旧的 `user_access_token` 不会自动带上新 scope
 
 7. 运行本地 OAuth 登录脚本，拿到用户 token。
@@ -205,7 +223,7 @@ mkdir -p ~/.codex/codex-lark-plugin
 LARK_FEISHU_APP_ID=cli_xxx \
 LARK_FEISHU_APP_SECRET=secret_xxx \
 LARK_FEISHU_OAUTH_REDIRECT_URI=http://127.0.0.1:3333/callback \
-LARK_FEISHU_OAUTH_SCOPE="offline_access drive:drive:readonly space:document:retrieve docx:document:readonly" \
+LARK_FEISHU_OAUTH_SCOPE="offline_access drive:drive space:document:retrieve docx:document" \
 LARK_FEISHU_USER_TOKEN_PATH=~/.codex/codex-lark-plugin/feishu-user-token.json \
 npm run login:feishu-oauth
 ```
@@ -250,6 +268,35 @@ npm run test:feishu-smoke
 - 第一次同步后，每篇文档只有 1 个本地 snapshot，还不能比较差异
 - 对同一批 root 再同步一次后，如果文档正文发生变化，就会累积到 `revisions[]`
 - 从第二次同步开始，可对已有多份 snapshot 的文档执行 diff
+
+### 写入型 MCP tools
+
+写入 tools 与只读检索 tools 分离，并且默认禁用。启用后可用：
+
+- `create_feishu_doc`：在指定 `folder_token` 下创建新版 `docx`，可选写入初始 `plain_text` 或最小 Markdown 内容。
+- `edit_feishu_doc`：对指定 `document_id` 执行 `append`、`insert` 或 `update_text`。首版不支持整篇覆盖替换和删除块。
+- `create_feishu_folder`：在指定 `parent_folder_token` 下创建子文件夹。
+- `move_feishu_file`：把显式指定的 `file_token` 按 `file_type` 移动到 `target_folder_token`。
+
+示例：
+
+```json
+{
+  "folder_token": "fldcn_xxxxx",
+  "title": "需求评审记录",
+  "content": "# 结论\n\n- 先上线最小闭环",
+  "content_type": "markdown",
+  "index_after_create": false
+}
+```
+
+安全边界：
+
+- 必须显式提供目标 token，不做模糊搜索后自动写入或移动。
+- 写入默认不刷新本地索引；只有 `index_after_create=true` 或 `refresh_index=true` 时才强制重建索引。
+- `edit_feishu_doc` 只支持追加、插入和更新指定块文本；不提供删除块或整篇覆盖能力。
+- 错误上下文只保留文档、文件夹、文件、块 ID、文件类型和飞书错误码，不输出 app secret、access token 或 refresh token。
+- API 创建资源的可见性取决于飞书权限模型；应用身份创建的文件夹或文档可能需要管理员提前共享父文件夹或补充协作者权限。
 
 ### 构建与测试
 

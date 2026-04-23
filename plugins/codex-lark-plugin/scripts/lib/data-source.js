@@ -251,3 +251,81 @@ export async function loadDocumentSource(options = {}, env = process.env) {
     documents
   };
 }
+
+export async function createFeishuClientForWrite(options = {}, env = process.env) {
+  const appId = normalizeText(options.appId ?? env.LARK_FEISHU_APP_ID);
+  const appSecret = normalizeText(
+    options.appSecret ?? env.LARK_FEISHU_APP_SECRET
+  );
+  const tokenMode = normalizeTokenMode(
+    options.tokenMode ?? env.LARK_FEISHU_TOKEN_MODE ?? "tenant"
+  );
+  const userAccessToken = normalizeText(
+    options.userAccessToken ?? env.LARK_FEISHU_USER_ACCESS_TOKEN
+  );
+  const userRefreshToken = normalizeText(
+    options.userRefreshToken ?? env.LARK_FEISHU_USER_REFRESH_TOKEN
+  );
+  const userTokenPath = normalizeText(
+    options.userTokenPath ?? env.LARK_FEISHU_USER_TOKEN_PATH
+  );
+  const userAccessTokenExpiresAt = normalizeNumber(
+    options.userAccessTokenExpiresAt ??
+      env.LARK_FEISHU_USER_ACCESS_TOKEN_EXPIRES_AT
+  );
+  const userRefreshTokenExpiresAt = normalizeNumber(
+    options.userRefreshTokenExpiresAt ??
+      env.LARK_FEISHU_USER_REFRESH_TOKEN_EXPIRES_AT
+  );
+
+  if (tokenMode === "tenant" && (!appId || !appSecret)) {
+    throw new Error(
+      "调用飞书写入 tool 时，tenant 模式必须提供 LARK_FEISHU_APP_ID 和 LARK_FEISHU_APP_SECRET。"
+    );
+  }
+
+  const persistedUserToken =
+    tokenMode === "user" ? await readPersistedUserToken(userTokenPath) : null;
+  const userClientConfig =
+    tokenMode === "user"
+      ? {
+          ...persistedUserToken,
+          userAccessToken:
+            userAccessToken || persistedUserToken?.userAccessToken,
+          userRefreshToken:
+            userRefreshToken || persistedUserToken?.userRefreshToken,
+          userAccessTokenExpiresAt:
+            userAccessTokenExpiresAt ??
+            persistedUserToken?.userAccessTokenExpiresAt,
+          userRefreshTokenExpiresAt:
+            userRefreshTokenExpiresAt ??
+            persistedUserToken?.userRefreshTokenExpiresAt
+        }
+      : {};
+
+  return createFeishuClient(
+    {
+      appId,
+      appSecret,
+      tokenMode,
+      userAccessToken,
+      userRefreshToken,
+      userAccessTokenExpiresAt,
+      userRefreshTokenExpiresAt,
+      userTokenPath,
+      ...userClientConfig
+    },
+    {
+      fetchImpl: options.fetchImpl,
+      baseUrl: options.baseUrl,
+      onUserTokenUpdate:
+        tokenMode === "user"
+          ? (token) =>
+              writePersistedUserToken(
+                resolveUserTokenPath(userTokenPath),
+                token
+              )
+          : undefined
+    }
+  );
+}

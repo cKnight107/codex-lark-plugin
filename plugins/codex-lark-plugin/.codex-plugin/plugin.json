@@ -1,7 +1,7 @@
 {
   "name": "codex-lark-plugin",
   "version": "0.2.0",
-  "description": "Feishu-oriented Codex plugin for team knowledge retrieval, summaries, recent updates, and document diffs.",
+  "description": "Feishu-oriented Codex plugin for team knowledge retrieval, summaries, document diffs, and guarded document writing.",
   "author": {
     "name": "chenkai",
     "email": "",
@@ -15,14 +15,15 @@
     "codex",
     "knowledge-base",
     "document-search",
-    "document-summary"
+    "document-summary",
+    "document-write"
   ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Codex Lark Plugin",
-    "shortDescription": "Query project docs, summaries, recent updates, and document diffs",
-    "longDescription": "Connect Codex with Feishu-style team knowledge so developers can retrieve project docs, inspect summaries, browse recent updates, and compare document revisions through structured MCP tools.",
+    "shortDescription": "Query and safely write Feishu project docs",
+    "longDescription": "Connect Codex with Feishu-style team knowledge so developers can retrieve project docs, inspect summaries, browse recent updates, compare document revisions, and explicitly create or edit documents through guarded MCP tools.",
     "developerName": "chenkai",
     "category": "Productivity",
     "capabilities": [
@@ -31,7 +32,8 @@
     "defaultPrompt": [
       "Find the latest product and project docs for a team",
       "List the most relevant docs for a project or keyword",
-      "Compare how a team document changed between two updates"
+      "Compare how a team document changed between two updates",
+      "Create a Feishu doc or move it into a target folder after enabling writes"
     ],
     "brandColor": "#0F766E",
     "websiteURL": "https://github.com/cKnight107/codex-lark-plugin",

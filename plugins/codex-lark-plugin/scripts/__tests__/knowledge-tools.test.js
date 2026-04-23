@@ -5,6 +5,14 @@ import os from "node:os";
 import path from "node:path";
 
 import { ensureIndex } from "../lib/index-store.js";
+import {
+  assertFeishuWriteEnabled,
+  FeishuWriteError,
+  FEISHU_WRITE_ENABLED_ENV,
+  isWriteTool,
+  validateWriteToolArgs,
+  writeToolDefinitions
+} from "../lib/feishu-write-contract.js";
 import { executeTool } from "../lib/knowledge-tools.js";
 import { handleRequest } from "../server.js";
 
@@ -75,7 +83,10 @@ test("MCP 请求处理可列出工具并调用摘要接口", async () => {
     { forceSync: true, indexPath }
   );
 
-  assert.equal(listResponse.result.tools.length, 5);
+  assert.equal(listResponse.result.tools.length, 9);
+  assert.ok(
+    listResponse.result.tools.some((tool) => tool.name === "create_feishu_doc")
+  );
 
   const summaryResponse = await handleRequest(
     {
@@ -97,5 +108,101 @@ test("MCP 请求处理可列出工具并调用摘要接口", async () => {
   assert.match(
     summaryResponse.result.structuredContent.summary,
     /Atlas 平台为知识插件提供自动同步链路/
+  );
+});
+
+test("飞书写入 tool 合同定义 4 个默认禁用的写入能力", () => {
+  assert.deepEqual(
+    writeToolDefinitions.map((tool) => tool.name),
+    [
+      "create_feishu_doc",
+      "edit_feishu_doc",
+      "create_feishu_folder",
+      "move_feishu_file"
+    ]
+  );
+
+  assert.ok(isWriteTool("create_feishu_doc"));
+  assert.equal(isWriteTool("search_docs"), false);
+
+  const editTool = writeToolDefinitions.find((tool) => tool.name === "edit_feishu_doc");
+  assert.deepEqual(
+    editTool.inputSchema.properties.operation.enum,
+    ["append", "insert", "update_text"]
+  );
+  assert.deepEqual(
+    editTool.inputSchema.properties.content_type.enum,
+    ["plain_text", "markdown"]
+  );
+
+  const moveTool = writeToolDefinitions.find((tool) => tool.name === "move_feishu_file");
+  assert.ok(moveTool.inputSchema.properties.file_type.enum.includes("docx"));
+  assert.ok(moveTool.inputSchema.properties.file_type.enum.includes("folder"));
+});
+
+test("飞书写入安全开关必须显式启用", () => {
+  assert.throws(
+    () => assertFeishuWriteEnabled("create_feishu_doc", { env: {} }),
+    (error) => {
+      assert.ok(error instanceof FeishuWriteError);
+      assert.equal(error.code, "FEISHU_WRITE_DISABLED");
+      assert.equal(error.toolName, "create_feishu_doc");
+      assert.match(error.message, new RegExp(`${FEISHU_WRITE_ENABLED_ENV}=true`));
+      return true;
+    }
+  );
+
+  assert.doesNotThrow(() =>
+    assertFeishuWriteEnabled("create_feishu_doc", {
+      env: { [FEISHU_WRITE_ENABLED_ENV]: "true" }
+    })
+  );
+});
+
+test("飞书写入参数校验会拒绝越界操作并保留脱敏上下文", () => {
+  const normalizedCreate = validateWriteToolArgs("create_feishu_doc", {
+    folder_token: "fldcn_parent",
+    title: "测试文档"
+  });
+
+  assert.equal(normalizedCreate.content_type, "plain_text");
+  assert.equal(normalizedCreate.index_after_create, false);
+
+  assert.throws(
+    () =>
+      validateWriteToolArgs("edit_feishu_doc", {
+        document_id: "doxcn_doc",
+        operation: "replace_all",
+        content: "不允许整篇覆盖"
+      }),
+    /operation 仅支持: append, insert, update_text/
+  );
+
+  assert.throws(
+    () =>
+      validateWriteToolArgs("edit_feishu_doc", {
+        document_id: "doxcn_doc",
+        operation: "insert",
+        content: "插入内容"
+      }),
+    /parent_block_id 不能为空|parent_block_id 必须是字符串/
+  );
+
+  assert.throws(
+    () =>
+      validateWriteToolArgs("move_feishu_file", {
+        file_token: "fldcn_same",
+        file_type: "docx",
+        target_folder_token: "fldcn_same",
+        app_secret: "should-not-leak"
+      }),
+    (error) => {
+      assert.ok(error instanceof FeishuWriteError);
+      assert.equal(error.code, "FEISHU_WRITE_INVALID_ARGUMENTS");
+      assert.equal(error.context.file_token, "fldcn_same");
+      assert.equal(error.context.target_folder_token, "fldcn_same");
+      assert.equal("app_secret" in error.context, false);
+      return true;
+    }
   );
 });

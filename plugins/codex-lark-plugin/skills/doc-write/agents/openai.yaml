@@ -1,0 +1,4 @@
+interface:
+  display_name: "Doc Write"
+  short_description: "Create or edit Feishu docs and organize Drive folders"
+  default_prompt: "Use $doc-write to create a Feishu doc, append or update content, create a folder, or move a file after writes are enabled."

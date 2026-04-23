@@ -23,11 +23,12 @@ const summary = {
   documentCount: index.documents.length,
   sourceType: index.source_type,
   mcpDefaultSourceType: serverEnv.LARK_DOCS_SOURCE ?? "sample",
-  mcpDefaultTokenMode: serverEnv.LARK_FEISHU_TOKEN_MODE ?? "tenant"
+  mcpDefaultTokenMode: serverEnv.LARK_FEISHU_TOKEN_MODE ?? "tenant",
+  mcpWriteEnabled: serverEnv.LARK_FEISHU_WRITE_ENABLED ?? "false"
 };
 
-if (summary.registeredTools.length !== 5) {
-  throw new Error("第一版 MCP tools 数量不正确。");
+if (summary.registeredTools.length !== 9) {
+  throw new Error("MCP tools 数量不正确。");
 }
 
 if (!summary.mcpServers.includes("codex-feishu-knowledge")) {
@@ -46,7 +47,8 @@ for (const key of [
   "LARK_FEISHU_USER_REFRESH_TOKEN",
   "LARK_FEISHU_USER_TOKEN_PATH",
   "LARK_FEISHU_OAUTH_REDIRECT_URI",
-  "LARK_FEISHU_OAUTH_SCOPE"
+  "LARK_FEISHU_OAUTH_SCOPE",
+  "LARK_FEISHU_WRITE_ENABLED"
 ]) {
   if (!(key in serverEnv)) {
     throw new Error(`插件 .mcp.json 缺少 ${key} 配置模板。`);

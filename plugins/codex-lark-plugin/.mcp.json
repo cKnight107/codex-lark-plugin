@@ -17,7 +17,8 @@
         "LARK_FEISHU_USER_REFRESH_TOKEN": "",
         "LARK_FEISHU_USER_TOKEN_PATH": "",
         "LARK_FEISHU_OAUTH_REDIRECT_URI": "http://127.0.0.1:3333/callback",
-        "LARK_FEISHU_OAUTH_SCOPE": "offline_access drive:drive:readonly space:document:retrieve docx:document:readonly"
+        "LARK_FEISHU_OAUTH_SCOPE": "offline_access drive:drive space:document:retrieve docx:document",
+        "LARK_FEISHU_WRITE_ENABLED": "false"
       }
     }
   }
