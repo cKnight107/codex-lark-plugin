@@ -1,7 +1,19 @@
+import { createFeishuClientForWrite } from "./data-source.js";
+import { createFeishuDoc, editFeishuDoc } from "./feishu-doc-write.js";
+import {
+  createFeishuFolder,
+  moveFeishuFile
+} from "./feishu-drive-write.js";
+import {
+  assertFeishuWriteEnabled,
+  isWriteTool,
+  validateWriteToolArgs,
+  writeToolDefinitions
+} from "./feishu-write-contract.js";
 import { ensureIndex } from "./index-store.js";
 import { diffParagraphs, normalizeText, tokenize } from "./text-utils.js";
 
-export const toolDefinitions = [
+const readToolDefinitions = [
   {
     name: "list_project_docs",
     description: "按项目列出文档，默认按更新时间倒序。",
@@ -65,6 +77,8 @@ export const toolDefinitions = [
     }
   }
 ];
+
+export const toolDefinitions = [...readToolDefinitions, ...writeToolDefinitions];
 
 function slimDocument(document) {
   return {
@@ -164,6 +178,10 @@ function pickRevision(revisions, cursor) {
 }
 
 export async function executeTool(name, args = {}, options = {}) {
+  if (isWriteTool(name)) {
+    return executeWriteTool(name, args, options);
+  }
+
   const { index } = await ensureIndex(options);
   const documents = index.documents ?? [];
 
@@ -252,5 +270,67 @@ export async function executeTool(name, args = {}, options = {}) {
 
     default:
       throw new Error(`未知 tool: ${name}`);
+  }
+}
+
+async function executeWriteTool(name, args = {}, options = {}) {
+  assertFeishuWriteEnabled(name, options);
+  const normalizedArgs = validateWriteToolArgs(name, args);
+  const client =
+    options.feishuClient ??
+    (await createFeishuClientForWrite(options, options.env ?? process.env));
+
+  switch (name) {
+    case "create_feishu_doc": {
+      const result = await createFeishuDoc({
+        client,
+        args: normalizedArgs
+      });
+
+      if (normalizedArgs.index_after_create) {
+        await ensureIndex({ ...options, forceSync: true });
+        return {
+          ...result,
+          indexed: true
+        };
+      }
+
+      return result;
+    }
+
+    case "edit_feishu_doc": {
+      const result = await editFeishuDoc({
+        client,
+        args: normalizedArgs
+      });
+
+      if (normalizedArgs.refresh_index) {
+        await ensureIndex({ ...options, forceSync: true });
+        return {
+          ...result,
+          indexed: true
+        };
+      }
+
+      return {
+        ...result,
+        indexed: false
+      };
+    }
+
+    case "create_feishu_folder":
+      return createFeishuFolder({
+        client,
+        args: normalizedArgs
+      });
+
+    case "move_feishu_file":
+      return moveFeishuFile({
+        client,
+        args: normalizedArgs
+      });
+
+    default:
+      throw new Error(`未知写入 tool: ${name}`);
   }
 }
